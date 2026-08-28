@@ -17,7 +17,7 @@ The [twelve-factor recipe](/homelab/twelve-factor) said an app's only job is to 
 - It shows **now**, not last Tuesday — once a pod is gone, so are its logs.
 - It can't **search** across everything for one request ID, one error, one user.
 
-So you want a log aggregator: one place that holds logs from every pod, keeps history, and answers questions. This recipe uses [OpenObserve](https://openobserve.ai/).
+So you want a log aggregator: one place that holds logs from every pod, keeps history, and answers questions. This recipe uses [OpenObserve](https://openobserve.ai/). Once the streams are searchable, the [alerts recipe](/homelab/openobserve-alerts) adds the probe layer that pages you when a CrashLoop or a broken k3d-to-host path isn't writing anything you'd think to search for.
 
 ## Why OpenObserve
 

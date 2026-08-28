@@ -222,7 +222,7 @@ Load it:
 sudo launchctl load /Library/LaunchDaemons/dev.otterpond.portrange.plist
 ```
 
-Now the wider pool is the permanent default, and this incident never happens to you.
+Now the wider pool is the permanent default, and this incident never happens to you. The [alerts recipe](/homelab/openobserve-alerts) watches `TIME_WAIT` and conntrack so you hear about this before connections start failing.
 
 ## When it breaks
 
@@ -244,7 +244,7 @@ If `k3d cluster start` fails outright, *then* reprovision (see below).
 
 ### Symptom: pods can't reach the database; image pulls time out
 
-Almost always a **stale `host.k3d.internal`**. k3d writes the Docker host's IP into `/etc/hosts` inside the cluster nodes when the cluster is created. If Colima's VM gets a new DHCP lease — after a restart, a sleep/wake, or a macOS update — that IP goes stale, and anything inside the cluster trying to reach a service on the host (like PostgreSQL) times out.
+Almost always a **stale `host.k3d.internal`**. k3d writes the Docker host's IP into `/etc/hosts` inside the cluster nodes when the cluster is created. If Colima's VM gets a new DHCP lease — after a restart, a sleep/wake, or a macOS update — that IP goes stale, and anything inside the cluster trying to reach a service on the host (like PostgreSQL) times out. The [alerts recipe](/homelab/openobserve-alerts) pages this as a k3d-path failure, not a database outage.
 
 Check whether the IPs still match:
 
