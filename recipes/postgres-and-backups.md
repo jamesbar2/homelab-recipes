@@ -48,7 +48,7 @@ Host=host.k3d.internal;Port=5432;Database=appdb;Username=appuser;Password=...
 
 That connection string is a secret — it's synced from the vault like any other (the [secrets recipe](/homelab/1password-secrets)).
 
-> `host.k3d.internal` is also the homelab's most common failure source. If it goes stale — after a reboot or a sleep/wake — pods get database timeouts that look like a database outage but aren't. The [cluster-host recipe](/homelab/cluster-host)'s troubleshooting has the fix; if database connections start timing out cluster-wide and the database itself is fine, look there first.
+> `host.k3d.internal` is also the homelab's most common failure source. If it goes stale — after a reboot or a sleep/wake — pods get database timeouts that look like a database outage but aren't. Same if `k3d cluster start` hangs on the CoreDNS hostAliases line and only the DB-backed sites stay down. The [cluster-host recipe](/homelab/cluster-host)'s troubleshooting has the fix; if database connections start timing out cluster-wide and the database itself is fine, look there first.
 
 ## Backups: the part that matters
 

@@ -240,20 +240,92 @@ k3d cluster start homelab
 kubectl get nodes        # wait for Ready
 ```
 
-If `k3d cluster start` fails outright, *then* reprovision (see below).
+If `k3d cluster start` hangs on the CoreDNS hostAliases INFO line, Ctrl-C it — the nodes are often already Ready. See the hang symptom below. If start fails outright, *then* reprovision (see below).
+
+### Symptom: k3d cluster start hangs on CoreDNS hostAliases; only DB-backed sites are down
+
+The CLI sits on this line and never returns:
+
+```
+INFO[0082] Injecting records for hostAliases (incl. host.k3d.internal) and for 4 network members into CoreDNS configmap...
+```
+
+Ctrl-C it. Do not rebuild. This is a start of an existing cluster, not a create, and the cluster is usually already up. Confirm that before you touch anything else:
+
+```bash
+k3d cluster list          # 1/1 server, 1/1 agent is "healthy"
+kubectl get nodes         # both Ready means the hang is after the fact
+```
+
+The "4 network members" are the containers on `k3d-homelab` — `tools`, `serverlb`, `server-0`, `agent-0`. They are not your Postgres containers.
+
+```bash
+docker network inspect k3d-homelab --format '{{range .Containers}}{{.Name}} {{end}}'
+kubectl -n kube-system get cm coredns -o jsonpath='{.data.NodeHosts}'
+echo
+```
+
+What you'll see in `NodeHosts` is the two k3s node IPs and nothing else. Missing: `host.k3d.internal` (the gateway of the k3d network), `k3d-homelab-serverlb`, and `k3d-homelab-tools`. k3s rewrites the CoreDNS addon on node start and wipes those extra records. k3d then hangs trying to put them back.
+
+Sites that don't need a database can come up. Sites that need Postgres stay down. In this failure, Postgres is a host-published Docker container on the default `bridge` network, not on `k3d-homelab`. Pods cannot reach it by container name. They also cannot use `localhost` — that is the pod itself, not the Mac.
+
+**Patch CoreDNS `NodeHosts`.** The k3d network gateway *is* `host.k3d.internal`:
+
+```bash
+docker network inspect k3d-homelab --format '{{(index .IPAM.Config 0).Gateway}}'
+```
+
+Keep the node IPs you already have in `NodeHosts`, add that gateway, and restart CoreDNS:
+
+```bash
+GW=$(docker network inspect k3d-homelab --format '{{(index .IPAM.Config 0).Gateway}}')
+SERVER_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "k3d-homelab").IPAddress}}' k3d-homelab-server-0)
+AGENT_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "k3d-homelab").IPAddress}}' k3d-homelab-agent-0)
+
+kubectl -n kube-system patch cm coredns --type merge -p "
+data:
+  NodeHosts: |
+    ${GW} host.k3d.internal
+    ${SERVER_IP} k3d-homelab-server-0
+    ${AGENT_IP} k3d-homelab-agent-0
+"
+kubectl -n kube-system rollout restart deploy/coredns
+```
+
+Confirm from a throwaway pod:
+
+```bash
+kubectl run -it --rm dns --image=busybox:1.36 --restart=Never -- nslookup host.k3d.internal
+```
+
+**Reach Postgres from a pod.** If the container publishes a port on the host, use `host.k3d.internal:<published-port>` — that's the simple path, and it's what the [PostgreSQL recipe](/homelab/postgres-and-backups) already assumes. The other option is `docker network connect k3d-homelab <postgres-container>` and then talk by container name. Never `localhost` from a pod.
+
+Do not create the cluster onto a compose/`bridge` network that already has a pile of containers. Create the cluster first, then `docker network connect` anything that needs to sit on `k3d-homelab`.
+
+**This patch does not survive the next k3s, Docker, or Mac reboot.** k3s rewrites the addon again and you're back here. Next start:
+
+```bash
+k3d cluster start homelab --wait --timeout 2m --verbose
+```
+
+If it hangs on the same INFO line, ignore the CLI and re-apply the patch.
 
 ### Symptom: pods can't reach the database; image pulls time out
 
 Almost always a **stale `host.k3d.internal`**. k3d writes the Docker host's IP into `/etc/hosts` inside the cluster nodes when the cluster is created. If Colima's VM gets a new DHCP lease — after a restart, a sleep/wake, or a macOS update — that IP goes stale, and anything inside the cluster trying to reach a service on the host (like PostgreSQL) times out.
 
-Check whether the IPs still match:
+Check whether the IPs still match — both in the node `/etc/hosts` *and* in CoreDNS `NodeHosts`. Those two copies can disagree. k3s rewrites the CoreDNS addon on node start and can drop `host.k3d.internal` while the node file still looks fine:
 
 ```bash
 docker exec k3d-homelab-server-0 cat /etc/hosts | grep host.k3d
 colima ssh -- ip -4 addr show eth0 | grep inet
+kubectl -n kube-system get cm coredns -o jsonpath='{.data.NodeHosts}'
+echo
 ```
 
-If they differ, repoint the cluster nodes at the real VM IP:
+If `NodeHosts` is missing `host.k3d.internal` or pointing at a dead IP, use the CoreDNS patch in the hang symptom above. Editing the node file alone does not fix cluster DNS.
+
+If the node `/etc/hosts` IP differs from the VM, repoint the cluster nodes at the real VM IP:
 
 ```bash
 VM_IP=$(colima ssh -- hostname -I | awk '{print $1}')
