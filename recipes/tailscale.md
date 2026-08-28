@@ -136,7 +136,7 @@ tailscale down
 tailscale up --reset
 ```
 
-`--reset` clears accumulated client state and brings the connection up clean. It's the Tailscale equivalent of turning it off and on again, and like that classic, it works far more often than it has any right to. Reach for it first.
+`--reset` clears accumulated client state and brings the connection up clean. It's the Tailscale equivalent of turning it off and on again, and like that classic, it works far more often than it has any right to. Reach for it first. The [alerts recipe](/homelab/openobserve-alerts) probes `BackendState`, `Self.Online`, and a real peer ping — not just whether `tailscaled` is running — and this reset is the first heal.
 
 ### Symptom: you can't reach the Mac Mini by its name
 
